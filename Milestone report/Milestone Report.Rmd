@@ -1,0 +1,379 @@
+---
+title: "Predictive text application: progress report"
+author: "Enrique Bertrand"
+date: "September, 2nd 2016"
+lang: english
+
+output: 
+    html_document:
+        number_sections: true
+---
+
+<style type="text/css">
+
+h1.title {font-size: 32px;}
+h1 {font-size: 24px; font-weight: bold; color: DarkBlue;}
+h2 {font-size: 20px; font-weight: bold; color: DarkBlue;}
+.table {width: 65%;}
+
+</style>
+
+```{r ref.label="packages", echo=FALSE, eval=TRUE, warning = FALSE, message = FALSE, results='hide'}
+```
+
+# Executive summary
+
+We report the progress of the ongoing project that we are developing to support mobile device users in their typing actions. After a brief synopsis and description of the approach followed, we include the results of the exploratory analysis made on the datasets that will be used to build up our application. As a result, we detail the different actions that we are doing in order to clean and normalize those datasets. These actions have been tested on a sample for evaluating potential challenges raised due to the size of the datasets. Finally, we consider some actions to cope with these challenges, and summarize the next steps. 
+
+
+# Synopsis of the project
+
+In this project, we are building a predictive text application for mobile devices that can help users while they are typing. The application will suggest to the user a list with the three more probable words coming after the word sequence typed so far (one-, two- or three-words sequences). That ranked list will be built up based on a probabilistic language model (using the modeling technique called "N-grams") trained with several collections of real texts extracted from a variety of sources: news, blogs, and twitter messages.
+
+## Basic approach: how predictions will work
+
+From a corpus of texts, a N-grams language model collects all the different sequences of N words (thus, unigrams or 1-word sequence; bigrams or 2-words; trigrams or 3-words, etc.) existing in the texts, togheter their frequencies and probabilities. 
+
+With these N-grams frequency datasets we can easily build a set of tables referencing the three most probable continuations for a concrete sequence of words. Such ranked next-word tables are the only data that our predictive application needs. We have at our disposal several analytics and text mining tools in the `R` platform to obtain the corresponding tables for unigrams, bigrams, trigrams, 4-grams, etc. Once obtained, we can implement the predictive engine in our application. 
+
+As an example about how it will work, suppose that the user has typed  `I could have`, a 3-words sequence. We must look for the next probable word. In the corresponding ranked table (obtained from the 4-grams frequency dataset) we find the following rows:
+
+| Typed word sequence (3 words) | Most probable next words (ordered) |
+|:-----------------------|:----------|
+| ...                    |  ....     | 
+| I could have           | 1. used, 2. known, 3. done |
+| ...                    |  ....     | 
+| I returned to          | 1. the, 2. work, 3. school |
+| ...                    |  ....     | 
+
+So we propose to the user the words `used`, `known`, and `done`, in this order. 
+
+But it could also happen that the sequence typed by the user is not in the corresponding table. Suppose now that the user typed `They presented in`, which is not contained in the 3-words ranked table. In this case we will "drop" our search to the 2-words ranked table, ignoring the first word of our sequence. We will find:
+
+| Typed word sequence (2 words) | Most probable next words (ordered) |
+|:-----------------------|:----------|
+| ...                    |  ....     |  
+| presented in             | 1. the, 2. a, 3. order |
+| ...                    |  ....     | 
+
+The process continues down this path until a match is found. This strategy is called "backoff" and it covers the fact that the word sequence typed by the user not always has to appear in the training data used to build up the language model. In the worst case, when no word has been found (the "Out-of-vocabulary problem"", OOV), we have algorithms (for instance, "Good Turing") to assign probabilities, and then ranks, to OOV words.
+
+
+# Exploratory analysis of the training data
+
+The language model used for making the prediction will be trained from data coming from three different sources:   
+
+* `News`   
+* `Blogs`   
+* `Twitter`   
+
+Given the different origins, these three sources could be quite variable in some basic characteristics.
+
+## Sizes and size distribution
+
+Each line in the source file becomes one element in the corresponding dataset. In the case of `twitter` each element is a message (with the known limit of 140 characters). In `blogs`, it is a published post or entry with, in some cases, the comments. In `news`, it is a piece of information about a relevant event.
+
+The following table summarizes basic indicators of each source: 
+
+```{r ref.label="loadingSources", echo=FALSE, eval=TRUE, cache=TRUE, warning = FALSE, message = FALSE, results='hide'}
+```
+
+```{r ref.label="statistics", echo=FALSE, eval=TRUE, cache=TRUE, warning = FALSE, message = FALSE, results='hide'}
+```
+
+Table: 
+
+| Source   | Elements          | Characters        | Element avg. size (in chars) | 
+|----------|------------------:|------------------:|-----------------------:|   
+| News     | `r newsLines`     | `r newsChars`     | `r newsMedChars`       |   
+| Blogs    | `r blogsLines`    | `r  blogsChars`   | `r blogsMedChars`      | 
+| Twitter  | `r twitterLines`  | `r twitterChars`  | `r twitterMedChars`    |
+
+As can be seen, `blogs` and `twitter` are much bigger than `news`. This raises the caveat that the more formal style of `news` texts could be underrepresented in the prediction model. The average size of each element is also different, being `twitter` texts clearly shorter than the rest, as expected.
+
+The distribution of element's size could also be much skewed depending of the source, as it can be seen in this boxplot graph:
+
+```{r ref.label="boxplot", echo=FALSE, eval=TRUE, cache=TRUE, fig.height=4, fig.width=7}
+```
+
+`Blogs` element's sizes are extremely skewed to the right (many outliers with big sizes), while `twitter` seems more homogeneous (please, take into account that sizes are represented in a logarithmic scale due to their big range).
+
+
+## Text content
+
+For the purpose of considering next steps in this project, we have carried out a preliminary inspection of the texts contents of each source. As the datasets are really big (mainly `blogs` and `twitter`) the task has been done over a sample of 20% of the elements.
+
+```{r ref.label="sampling", cache=TRUE, echo=FALSE, eval=TRUE}
+```
+
+The goal of this exploration is to identify potential problems that could condition the phase where we will extract the words and sequences of words from the text. Apart from the most obvious issues -lower/upper case differences, profanities, numbers, links, etc.-, the following ones should be solved before any process be tackled (please, be aware that, without changing some parameters, non-printable characters in html are represented by their Unicode code in the form \<U+XXXX\>):
+
+* The presence of many special characters (symbols, emojis, etc), particularly in twitter. Example:
+
+```{r echo=FALSE, cache=TRUE, comment=""}
+print(twitter_sample[grep("[\U263A-\U266B]", twitter_sample)[2]])
+```
+
+* The erratic use of apostrophes, quotations and double quotation marks. E example:
+
+```{r echo=FALSE, cache=TRUE, comment=""}
+print(blogs_sample[grep("\U2019|\U0092|\U0027", blogs_sample)[17]])
+
+```
+
+* The same happens with hyphens and dashes; practically any possible option allowed by Unicode has been used:
+
+```{r echo=FALSE, cache=TRUE, comment=""}
+print(blogs_sample[grep("[\U2011\U2015]", blogs_sample)[c(4)]])
+```
+
+* Although texts have been selected from English sites/users, some foreign languages contents still remain. Example:
+
+```{r ref.label="foreign", cache=TRUE, echo=FALSE, eval=TRUE, comment=""}
+```
+
+Thus, the cleaning process, including the standardization of characters that play a similar role in the sentence, is a prerequisite before any attempt of producing the N-gram frequency datasets is undertaken.
+
+# Cleaning and normalizing the data
+
+Taking into account usual procedures plus the issues commented in the previous section, we have decided to clean and normalize the texts removing and/or changing concrete characters or words. When compared with other kind of text processing applications, we have decided to maintain what are called "stopwords" (common pronouns, prepositions, linking words, etc.) as they are a substantial part of any sentence. Also, the contracted verbal forms (I'm, don't, won't, etc.) are considered as single words.
+
+Fortunately we have a very powerful instrument for accomplishing the task, regular expressions, which can detect any character's pattern in a text. Based on this instrument, in our project we are applying the following cleaning and normalizing procedures:
+
+* Removing any element with more than 50% of non-English (Latin) characters as they will be for sure in a foreign language.
+
+* Removing references to web pages, email addresses, external links, etc. They are not interpretable in terms of words.
+
+* Removing numbers, special characters, control symbols, etc. for the same reason.
+
+* Removing swear words and profanities (using the unofficial Google/Android profanities list).
+
+* Replacing any uppercase letter to its lowercase form, to count together any form of a word.
+
+* Normalizing all the quotation marks options to one single standard character,  the apostrophe. Once this done, removing all the apostrophes except those used in contracted verb forms.
+
+* Normalizing all the hyphen/dashes to one single standard character: the simple hyphen. Once this done, removing all the hyphens except intra-word hyphens.
+
+* Normalizing any punctuation that can signal the end of a sentence (|.|;|:|?|!|) to a single mark ("\<s\/\>", in our case.). Removing the rest of punctuation signs.
+
+The last step, marking carefully end of sentences, is particularly relevant for avoiding misleading predictions of words that never can be together, although they can appear as that in the training texts if we remove indiscriminately  punctuation during the cleaning phase.
+
+# Words and N-grams
+
+As it was explained before, N-grams are the different sequences of N words that appears in the text. After the cleaning and normalization of the sources, and for the purpose of having a glimpse of the effort and necessary resources, we have generated the corresponding N-grams (until four) for the sample datasets. The next table summarizes the results:
+
+```{r ref.label="ngrams", echo=FALSE, eval=TRUE, cache=TRUE, warning=FALSE, message=FALSE, comment=""}
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+
+kable(summary_sources[, c(1:9)], format.args = list(big.mark = ","), col.names = c("Source", "Elements", "Characters", "Sentences", "Words", "Unigrams", "Bigrams", "Trigrams", "4-grams"))
+
+```
+
+We can observe that, as the value of N increases, N-grams sizes grow very quickly. Also that the number of distinct single words (unigrams) detected depends of the size of the source texts (in fact, it grows following the [Heap's law](http://en.wikipedia.org/wiki/Heaps%27_law)).
+
+This means that when we will move from the samples to the full sources, producing the N-gram frequency datasets can be very costly task in terms of CPU and memory. We will need to consider how to cope with this challenge; in a later section we will introduce some alternatives
+
+## Most frequent words
+
+From the unigram table we can show the 15 most frequent words, globally and for each source:
+
+```{r ref.label="mostFreqGlob", echo=FALSE, eval=TRUE, fig.height=5, fig.width=7}
+```
+
+As might be expected, the most frequent words are what we mention before: the usual English "stopwords". This means that the sources are, let say, "average-English" examples well capable of being used as training datasets.
+
+Interestingly, if we analyze frequent words now for each source, we can detect some characteristics patterns that allow us to identify the origin:
+
+```{r ref.label="mostFreqSource", echo=FALSE, eval=TRUE, fig.height=5, fig.width=7}
+```
+
+We can see the relevance of words like `i`, `my`, `me` or `you` in `twitter` texts compared with `news` (or even `blogs`), given its "conversational" character. On the contrary, words very usual in reported speech like `said`, `was` or `he` are in the list for `news` but not in the `twitter` one. Detecting this kind of patterns is the base of other text predictive application (for instance, classification), out of the scope of the current project.
+
+# Final considerations and next steps
+
+Once sources are cleaned, the main next steps in our project are basically:
+
+* Producing the full N-gram frequency datasets.
+
+* From them, building up the ranked next-word tables with the list of the three most probable continuation given a previous sequence.
+
+* Developing the predictive application based on those ranked tables.
+
+However, considering the requisite of minimize the size of these tables (we are talking about mobile device with limited memory resources), we should evaluate carefully how to produce the seeds of them: the full N-grams frequency datasets.
+
+First of all, let us state again that what is deployed to the mobile device are the ranked tables, which only include a limited number of rows compared to the frequency datasets. So their size is considerable smaller, although it depends on the number of the N-grams detected. 
+
+In any case, the main problem is the cost of producing the different N-grams frequency datasets. We have two options (or, just in case, a combination of both):
+
+* Limiting the value of N, that is, working only with uni-, bi- and trigrams, leaving out 4-grams.
+
+* Pruning the N-grams by removing all the sequences below a threshold frequency.
+
+The most systematic way of deciding about these questions is evaluating how well each alternative predicts a sample. There is a measure called 'perplexity' that allow to compare probabilistic models from that point of view: a lower perplexity indicates that the model is better.
+
+In our case, the plan is to proceed with a "data science" approach:
+
+1. To split the source texts in train and test subsets.
+
+2. To train the language models under evaluation with the train subset. 
+
+3. To estimate their perplexity over the test subset.
+
+In this way we can decide if adding a 4-grams model increases in a relevant percentage the predictive power of the application. Or if after pruning an N-gram from low frequency cases, the loss of power is negligible.
+
+
+```{r packages, echo=FALSE, eval=FALSE}
+
+library(tm)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(data.table)
+
+```
+
+
+```{r loadingSources, echo=FALSE, eval=FALSE}
+news <- readLines("../data/en_US/en_US.news.txt", encoding = "UTF-8")
+blogs <- readLines("../data/en_US/en_US.blogs.txt", encoding = "UTF-8")
+twitter <- readLines("../data/en_US/en_US.twitter.txt", encoding = "UTF-8")
+
+```
+
+
+```{r statistics, echo=FALSE, eval=FALSE}
+
+newsLines <- format(length(news), big.mark = ",")
+newsChars <- format(sum(nchar(news)), big.mark = ",")
+newsMedChars <- format(round(mean(nchar(news)), 2), big.mark = ",")
+
+blogsLines <- format(length(blogs), big.mark = ",")
+blogsChars <- format(sum(nchar(blogs)), big.mark = ",")
+blogsMedChars <- format(round(mean(nchar(blogs)), 2), big.mark = ",")
+
+twitterLines <- format(length(twitter), big.mark = ",")
+twitterChars <- format(sum(nchar(twitter)), big.mark = ",")
+twitterMedChars <- format(round(mean(nchar(twitter)), 2), big.mark = ",")
+
+```
+
+
+```{r boxplot, echo=FALSE, eval=FALSE}
+
+elementSizes <- rbind(data.frame(source = "news", nchar = nchar(news)),
+                      data.frame(source = "blogs", nchar = nchar(blogs)),
+                      data.frame(source = "twitter", nchar = nchar(twitter)))
+
+g <- ggplot(elementSizes, aes(x=source, y=nchar, color = source)) +
+        geom_boxplot() +
+        scale_y_continuous(trans = "log10", 
+                           breaks = c(1, 10, 100, 1000, 10000)) +
+        coord_flip() +
+        ggtitle("Distribution of elements size") + 
+        labs(y = "Characters (logarithmic scale)", x = "Source") +
+        theme(legend.position = "none",
+              axis.text.y = element_text(size = 10, face = "bold"))
+        
+        
+
+print(g)
+
+```
+
+
+```{r sampling, echo=FALSE, eval=FALSE}
+set.seed(150688)
+news_sample <- news[sample(1:length(news), round(length(news) * 0.2, 0))]
+blogs_sample <- blogs[sample(1:length(blogs), round(length(blogs) * 0.2, 0))]
+twitter_sample <- twitter[sample(1:length(twitter), 
+                                 round(length(twitter) * 0.2, 0))]
+```
+
+
+```{r foreign, echo=FALSE, eval=FALSE}
+
+foreign_text = vector(mode = "numeric")
+for (i in 1:length(blogs_sample)){
+  text_reduced <- gsub("[\U0080-\UFFFF]", "", blogs_sample[i])
+  if(nchar(text_reduced) < nchar(blogs_sample[i]) * 0.5){
+    foreign_text <- c(foreign_text, i)
+  }
+}
+
+print(blogs_sample[foreign_text][30])
+
+```
+
+
+```{r ngrams, echo=FALSE, eval=FALSE}
+
+source("Summary_source_functions.R")
+
+statistics <- getStatistics("news")
+summary_sources <- statistics[["summary"]]
+mostFreq_sources <- statistics[["mostFreqWords"]]
+ngramFreq_sources <- statistics[["freqTable"]]
+
+statistics <-  getStatistics("blogs")
+summary_sources <- rbind(summary_sources, statistics[["summary"]])
+mostFreq_sources <- rbind(mostFreq_sources, statistics[["mostFreqWords"]])
+ngramFreq_sources <- rbind(ngramFreq_sources, statistics[["freqTable"]])
+
+statistics <-  getStatistics("twitter")
+summary_sources <- rbind(summary_sources, statistics[["summary"]])
+mostFreq_sources <- rbind(mostFreq_sources, statistics[["mostFreqWords"]])
+ngramFreq_sources <- rbind(ngramFreq_sources, statistics[["freqTable"]])
+
+mostFreq_sources$source <- as.factor(mostFreq_sources$source)
+ngramFreq_sources$source <- as.factor(ngramFreq_sources$source)
+
+```
+
+
+```{r mostFreqGlob, echo=FALSE, eval=FALSE}
+
+mostFreq <- mostFreq_sources %>%
+                group_by(ngram) %>%
+                summarise(freq = sum(freq)) %>%
+                arrange(desc(freq))
+
+words <- as.data.table(mostFreq)[1:15]$ngram
+
+mostFreqDist <- rbind(mostFreq_sources[source == "news" & ngram %in% words],
+                      mostFreq_sources[source == "blogs" & ngram %in% words],
+                      mostFreq_sources[source == "twitter" & ngram %in% words])
+
+g <- ggplot(mostFreqDist, aes(x = reorder(ngram, -freq), y = freq, 
+                              fill = source)) +
+        geom_bar(stat = "identity", width = 0.6, color = "grey") +
+        ggtitle("15 most frequent words globally") +
+        labs(x = "", y = "Frequency") +
+        theme(axis.text.x = element_text(angle = 60, size = 11, face = "bold",
+                                         hjust = 1, vjust = 0.2))
+
+print(g)
+
+```
+
+
+```{r mostFreqSource, echo=FALSE, eval=FALSE}
+
+mostFreqBySource <- rbind(mostFreq_sources[source == "news"][1:15],
+                  mostFreq_sources[source == "blogs"][1:15],
+                  mostFreq_sources[source == "twitter"][1:15])
+
+g <- ggplot(mostFreqBySource, aes(x = reorder(ngram, freq), y = freq, 
+                                  fill = source)) +
+          geom_bar(stat = "identity",  width = 0.3, color = "grey") +
+          facet_grid(. ~ source) +
+          ggtitle("15 most frequent words by source") +
+          labs(x = "", y = "Frequency") +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.2),
+                axis.text.y = element_text(size = 11, face = "bold")) +
+          coord_flip()
+
+print(g)
+
+```

@@ -1,0 +1,130 @@
+<style>
+.small-code pre code {
+  font-size: 16px;
+}
+</style>
+
+<style>
+.reveal ul, 
+.reveal ol {
+    font-size: 27px;
+}
+</style>
+
+<style>
+.parag p {
+    font-size: 28px;
+}
+</style>
+
+<style>
+.small-parag p {
+    font-size: 26px;
+}
+</style>
+
+<style>
+.table p {
+    font-size: 24px;
+}
+</style>
+
+```{r, echo=FALSE}
+library(knitr)
+library(data.table)
+```
+
+Predicting next word in mobile apps
+================================================
+author: E. Bertrand
+date: October, 4th 2016
+
+<small>
+Helping mobile device users to reduce typing effort
+</small>
+
+1. Purpose of the project
+========================================================
+class: reveal
+
+2. Foundations: N-Grams models
+========================================================
+class: reveal
+
+- We predict next words based on statitiscal language models called N-grams, where the conditioned probability for a word given a previous limited sequences of N - 1 words is estimated (Markov's assumption).
+
+- For training and building these N-grams up, we use data from three different, heterogeneous text sources: news (~75,000 elements), blogs (~900,000 elements) and twitter messages (~2,300,000 elements).
+
+- Data has been cleaned (special characters, profanities, links, hashtags, etc.) and then splitted in two corpora: a train corpus, for building the models; and a test corpus, for estimating the performance of them. Then we produce a set of unigrams, bigrams, trigrams and 4-grams, pruned for frequencies below 1 to 3 (depending on the N-gram order) for the shake of reducing their size.
+
+- For being able to deal with word sequences not present in the training corpus we use the "stupid backoff" algorithm: if a sequence is not present in a higher-order N-gram, we remove the first word and backoff to a lower-order N-gram, weighing the result by a fixed factor ($\lambda = 0.4$, as recommended by method proponents).
+
+
+3. Prediction tables and estimated model's performance
+========================================================
+left: 60%
+class: small-parag
+
+<small>
+- N-grams models are transformed in prediction tables by selecting only the three most likely continuations (after scoring all possible results with "stupid backoff"). This strategy sacrifices some accuracy in favor of greater speed and less data footprint on the server, which are key requirements on mobile apps. See one sample of the 4-gram (3 + 1 words) prediction table.
+</small>
+
+<small>
+- Model performance of this approach, estimated as accuracy against an independent test subset, shows consistent results with similar reported experiences. Starting with 4-grams (backed off by lower-order N-grams) and the "anyone of three most likely words" option, we reach a 26.08% of right predictions, which is a good percentage. 
+</small>
+
+***
+<small>
+```{r echo=FALSE}
+fourgramNextWord <- readRDS("./data/nextWords_4_sbkf.rds")
+kable(fourgramNextWord[c(750000, 750001, 750003)], digits = 2, format = "html", 
+      row.names = FALSE)
+```
+</small>
+
+<small>
+```{r echo=FALSE}
+accuracy_results <- readRDS("./data/accuracy_results_sbkf.rds")
+kable(accuracy_results, digits = 2, format = "html", 
+      caption = "Accuracy (percentage of correct predictions)",
+      row.names = FALSE)
+```
+</small>
+
+4. How do the Shiny applications work
+========================================================
+left: 50%
+class: small-parag
+
+<br/>
+- Applications are in a Shiny dashboard together technical & general info. Wait some seconds before the supporting tables are fully loaded and ready (shown the in upper-right corner).
+
+- In the first application, simply type, or paste, a phrase and click the 'Next word' button. On the right, in bold red, you can see the predicted next word.
+
+- In the second application, we simulate a mobile app: you start typing and after you introduce a space or punctuation mark you can see the three most likely continuations. You can choose one of them (clicking on it) or continue typing. 
+
+***
+
+<br/>
+![Full Dashboard](./figures/ShinyAppsOverview.jpg)
+![First App](./figures/App1.jpg)
+![Second App](./figures/App2.jpg)
+
+
+5. Further information [*] and next steps
+========================================================
+class: reveal
+
+<small>
+- The R code for building the models and the Shiny dashboard is available in a [GitHub repository](https://github.com/e-bertrand/Shiny_Dashboard/blob/master/LoadData.R). See also [a diagram](https://github.com/e-bertrand/Shiny_Dashboard/blob/master/LoadData.R) showing the whole process behind the solution.
+
+- The Shiny dashboard (including related documentation) can be accesed [here](https://e-bertrand.shinyapps.io/US_Air_Pollutants/).
+
+- Some improvements over the current proposed solution (among others):     
+      - Adding 5-grams models / tables.
+      - More precise "Out-of-Vocabulary" smoothing algorithms than "stupid backoff".
+      - Predictions depending on the context (twitter vs. blogs), and/or past user inputs.
+
+<br/>
+- [*] It has been reported that some external links from RPubs do not work properly  (e.g. to github). You can circumvent this problem clicking on the link with the right mouse-button, and choosing the "Open link in a new window" option (or similar).
+</small>

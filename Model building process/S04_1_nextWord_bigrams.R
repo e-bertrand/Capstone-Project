@@ -1,0 +1,99 @@
+############################################################################
+# Creating the table with the most probable continuation after one word
+# from the bigram model. If no bigram for that word exists, stupid backoff
+# with lambda = 0.4 is applied
+########################################################################
+
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(stringr)
+
+# Usualy the three most probable continuations are selected. As it could
+# include a number of <s/> and NA double number is processed
+freqLimit <- 3 * 2
+
+# Loading ngrams models of lower order than the basic one
+ngram_2 <- as.data.table(readRDS("ngram_2.rds")) 
+ngram_1 <- as.data.table(readRDS("ngram_1.rds"))
+
+# Selecting all the unique bases from the basic model
+baseList <- unique(ngram_2$base)
+numBases <- length(baseList)
+
+# Selecting the most frequent unigrams as residual words if necessary 
+# (last step in stupid backoff algorithm just in case nothing else apears
+# in high-order ngrams).
+# As distance for basic model is 1, lamba is raised to the power of 1
+freqWords <- ngram_1[order(freq, decreasing = TRUE)][ngram != "<s/>"][1:freqLimit]
+residualWords <- freqWords$ngram
+residualScores <- freqWords$prob * (0.4)
+
+iniTime <- Sys.time()
+startTime <- Sys.time()
+
+# iInitializing vector of the three most likely continuation for each base
+w_1 <- vector(mode = "character", length = numBases)
+w_2 <- vector(mode = "character", length = numBases)
+w_3 <- vector(mode = "character", length = numBases)
+
+# For each base we get the three most likely continuations
+for (i in 1:numBases){
+  
+  # Initialize the list of next words and its scores following stupid backoff
+  nextWords <- vector(mode = "character")
+  scores <- vector(mode = "numeric")
+  
+  base1 <- baseList[i]
+  
+  
+  # Get the frequency for each base from the corresponding low-order ngrams
+  num1 <- ngram_1[ngram == base1]$freq
+  
+  # Starting from the high order ngram we get the most frequent ngrams,
+  # calculate their scores after stupid backoff algorithm with lambda = 0.4 
+  # and add to the global list of next words and scores
+  most2 <- ngram_2[base == base1][order(freq, decreasing = TRUE)][1:freqLimit]
+  most2 <- most2[!is.na(ngram)]
+  if (!identical(num1, numeric(0))){
+    nextWords2 <- sapply(str_split(most2$ngram, " "), function(x){x[2]})
+    scores2 <- most2$freq / num1
+    nextWords <- c(nextWords, nextWords2)
+    scores <- c(scores, scores2)
+  }
+  
+  # Adding to the lists the residual words
+  nextWords <- c(nextWords, residualWords)
+  scores <- c(scores, residualScores)
+  
+  # Ordering word list by decreasing scores, removing duplicates and <s/>
+  # and getting the first three
+  scores <- scores[order(scores, decreasing = TRUE)]
+  nextWords <- nextWords[order(scores, decreasing = TRUE)]
+  
+  acceptable <- !duplicated(nextWords) & nextWords != "<s/>"
+  nextWords <- nextWords[acceptable]
+  scores <- scores[acceptable]
+  
+  w_1[i] = nextWords[1]
+  w_2[i] = nextWords[2]
+  w_3[i] = nextWords[3]
+  
+  # Reporting progress
+  if (i %% 10000 == 0){
+      cat("\nProcessed", i, "ngrams from", numBases, "in",
+          difftime(Sys.time(), iniTime, units = "mins"), "m.")
+      iniTime <- Sys.time()
+  }
+}
+
+# Creating and saving final data.table
+next_words_2 <- data.table(ngram = baseList,
+                           w_1 = w_1,
+                           w_2 = w_2,
+                           w_3 = w_3)
+
+cat("\nTotal time:, ", difftime(Sys.time(), startTime, units = "mins"), "m.")
+
+saveRDS(next_words_2,  paste0("nextWords_2_sbkf.rds"))
+
