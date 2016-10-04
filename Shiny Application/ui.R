@@ -2,10 +2,12 @@ library(shiny)
 library(shinydashboard)
 library(DT)
 
+# Building the Dashboard header
 header  <-  dashboardHeader(
     title = "Predictive Text Apps"
 )
 
+# Building the Dashboard sidebar
 sidebar <- dashboardSidebar(
     sidebarMenu(
         menuItem("Applications", tabName = "apps", icon = icon("list-alt")),
@@ -15,10 +17,14 @@ sidebar <- dashboardSidebar(
     )
 )
 
+# Building the Dashboard body
 body <- dashboardBody(
     tabItems(
         
+        # Applications tab
         tabItem(tabName = "apps", 
+                
+                # Application 1 + progress message
                 fluidRow(
                 column(width = 5, h3("Application 1 - Predicting the next word")),
                 column(width = 4, offset = 3,
@@ -48,6 +54,7 @@ body <- dashboardBody(
                 
                 box(height = 2, width = NULL),
                 
+                # Application 2
                 h3("Application 2 - Avoid typing: choose the next word"),
                 box(width = NULL,
                     p(strong("Type your message")),
@@ -87,6 +94,7 @@ body <- dashboardBody(
                 )
         ),
         
+        # General info tab
         tabItem(tabName = "info",
                 fluidRow(column(width = 10,
                 h4(strong("How to use these applications?")),
@@ -129,6 +137,7 @@ body <- dashboardBody(
                 
         ))),
         
+        # Technical detailed info tab
         tabItem(tabName = "tech",
                 fluidRow(column(width = 11,
                 h4(strong("How the language models have been built?")),
@@ -205,6 +214,7 @@ body <- dashboardBody(
                   'stupid backoff'.")
         ))),
         
+        # Process schema tab
         tabItem(tabName = "proc",
                 h4(strong("Schema of the whole process")),
                 imageOutput("process")
@@ -212,6 +222,7 @@ body <- dashboardBody(
     )
 )
 
+# Putting all dashboard elements together
 dashboardPage(skin = "yellow",
     header,
     sidebar,
